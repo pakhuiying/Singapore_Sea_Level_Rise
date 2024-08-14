@@ -80,7 +80,7 @@ time_prop = time.time()
 
 if connectivity_bool:
 
-	local_land_arr = local_land.data()
+	local_land_arr = local_land.data() #bool data
 	#We first find the edge of the DEM.
 
 	checkstack, bolean = getCoastlineContinuationSet(SLR.data(),dem_arr, bolean_min, start_set_min, protection_arr)
@@ -95,7 +95,7 @@ else:
 
 		
 floodmap = dem.copy()
-floodmap[:] = water_depth*local_land_arr
+floodmap[:] = water_depth*local_land_arr # creates a copy. Clips the land boolean area with the floodmap to show which the water depth on the land array
 floodmap.writeNodata(0)
 floodmap.writeRaster(filename = fldr+'/water_depth_RP{}.tif'.format(RP))
 

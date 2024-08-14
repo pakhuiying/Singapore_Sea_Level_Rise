@@ -1,7 +1,3 @@
-"""
-test run of bathtub.py with test np arrays
-"""
-
 from bathtub import *
 import numpy as np
 import sys
@@ -9,8 +5,9 @@ import time
 # from scipy import signal
 import scipy.signal as signal
 import matplotlib.pyplot as plt
-from matplotlib import cm
+from matplotlib import cbook, cm
 from matplotlib.patches import Rectangle
+from matplotlib.colors import LightSource
 import argparse
 
 # parse arguments
@@ -26,33 +23,19 @@ def get_water_array(n = 10,slr = 1.0):
     """
     return np.zeros((n,n),dtype=float) + slr
 
-def get_dem_array(n = 10, slope = 1, max_elev = 5, min_elev=-1):
-    '''
-    Generates a n x n matrix with a centered gaussian 
-    of standard deviation std centered on it. If normalised,
-    its volume equals 1.
-    @returns X, Y mesh grid and Z (DEM elev)
-    '''
-    
-    # ax = np.linspace(-(n - 1) / 2., (n - 1) / 2., n)
-    # gauss = np.exp(-0.5 * np.square(ax) / np.square(std))
-    # kernel = np.outer(gauss, gauss)
-    # kernel = kernel / np.sum(kernel)
-    # norm_kernel = kernel/np.max(kernel)
-    # return norm_kernel*max_elev + min_elev
-    
-    # defining surface and axes
-    def f(x, y):
-        return np.sin(np.sqrt(slope*x ** 2 + slope*y ** 2))
-    
-    # x and y axis
-    x = np.linspace(-1, 5, n)
-    y = np.linspace(-1, 5, n)
-    
-    X, Y = np.meshgrid(x, y)
-    Z = f(X, Y)
+def get_dem_array(min_elev=-1):
+    # Load and format data
+    dem = cbook.get_sample_data('jacksboro_fault_dem.npz')
+    z = dem['elevation']
+    nrows, ncols = z.shape
+    x = np.linspace(dem['xmin'], dem['xmax'], ncols)
+    y = np.linspace(dem['ymin'], dem['ymax'], nrows)
+    x, y = np.meshgrid(x, y)
 
-    return X, Y, Z/np.max(Z)*max_elev + max_elev + min_elev
+    region = np.s_[5:50, 5:50] # returns a tuple of slice objects, useful to indx array afterwards
+    x, y, z = x[region], y[region], z[region]
+    z = z - z.min() + min_elev
+    return x,y,z
 
 def get_protection_array(n = 10):
     return np.zeros((n,n),dtype = float)
@@ -80,6 +63,21 @@ def plot_seawall(ax,n):
     ax.add_patch(Rectangle((n-10, 0), 5, n-5, fill=True, hatch='+',color='red',alpha=0.5))
     return
 
+def plot_dem(ax,x,y,z):
+    # Set up plot
+    ls = LightSource(270, 45)
+    # To use a custom hillshading mode, override the built-in shading and pass
+    # in the rgb colors of the shaded surface calculated from "shade".
+    rgb = ls.shade(z, cmap=cm.gist_earth, vert_exag=0.1, blend_mode='soft')
+    surf = ax.plot_surface(x, y, z, rstride=1, cstride=1, facecolors=rgb,
+                        linewidth=0, antialiased=False, shade=False)
+
+    return surf
+
+def plot_water(ax, water_arr):
+    surf = ax.plot_surface(X,Y, water_arr, cmap = cm.Blues, alpha=0.7)
+    return surf
+
 if __name__ == "__main__":
 
     #Set global attenuation factor (unitless)
@@ -89,21 +87,18 @@ if __name__ == "__main__":
 
     dem_res = 30
     
-    land_thresh = 0.2
-    domain_size = 50
-    max_elev = 3
-    min_elev = -1
-    std = 7
+    land_thresh = 0.0
+    min_elev = -50
     slr = args.slr #0.4
-    slope = args.slope
 
-    X, Y, dem_arr = get_dem_array(n = domain_size, max_elev=max_elev, min_elev=min_elev, slope = slope) # float arr
+    X, Y, dem_arr = get_dem_array(min_elev=min_elev) # float arr
     land_arr = dem_arr >= land_thresh # bool arr
     water_arr = get_water_array(dem_arr.shape[0], slr = slr) # float arr
     protection_arr = get_protection_array(dem_arr.shape[0]) # float arr
+    bolean_min = np.zeros(dem_arr.shape, dtype = bool)
 
-    seawall_idx = get_seawall_idx()
-    build_seawall(protection_arr, seawall_idx = seawall_idx, elev = max_elev)
+    # seawall_idx = get_seawall_idx()
+    # build_seawall(protection_arr, seawall_idx = seawall_idx, elev = max_elev)
 
     # build seawall
     # protection_arr[np.s_[-10:-5,:-5]] = max_elev
@@ -113,39 +108,16 @@ if __name__ == "__main__":
     att_val = args.att_val*att_bool
     att_arr = dem_arr*0+att_val # numpy array
 
-    # arr_list = [dem_arr,land_arr,water_arr,protection_arr]
-    # title_list = ['DEM (float)',f'Land > {land_thresh:.2f} (bool)',f'SLR = {slr:.2f} (float)', 'Protection (float)']
-    
-    # print('start_set_min:',start_set_min)
-    print(f'min DEM: {dem_arr.min()}, max DEM: {dem_arr.max()}, dem shape: {dem_arr.shape}')
-
-    bolean_min = np.zeros(dem_arr.shape, dtype = bool)
-    
-    fig, axes = plt.subplots(1,2, subplot_kw={"projection": "3d"})
-    for ax in axes:
-        ax.set_ylabel('y')
-        ax.set_xlabel('x')
-        ax.set_zlabel('z')
-
-    print(f'X, Y shape: {X.shape}')
-    # plot DEM
-    surf = axes[0].plot_surface(X,Y, dem_arr, vmin = dem_arr.min(), cmap = cm.viridis)
-    # plot water level plane
-    surf_water = np.ones(X.shape)*slr
-    axes[0].plot_surface(X,Y, surf_water, cmap = cm.Blues, alpha=0.7)
-    # plot protection
-    axes[0].plot_surface(X,Y, protection_arr, cmap = cm.Reds,alpha=0.7,label='seawall')
-
-    
+    # start 3D plot
+    fig, ax = plt.subplots(subplot_kw=dict(projection='3d'))
+    surf = plot_dem(ax, X, Y, dem_arr)
+    _ = plot_water(ax,water_arr=water_arr)
+    ax.set_title('DEM (m)')
     fig.colorbar(surf, shrink = 0.5, aspect=5)
-    axes[0].set_title(f'DEM\nmax: {max_elev:.2f}, min: {min_elev:.2f}')
-    zlim = axes[0].get_zlim()
-    
-   
-    # """
-    # identify the start set min on land array
-    # """
-    
+    ax.set_title(f'DEM\nmax: {dem_arr.max():.2f}, min: {min_elev:.2f}')
+    plt.show()
+
+    # start 2D plot
     #Exploit minwater to get a starting point for flooding efficiently.
     start_set_min = getStartSet(water_arr, dem_arr, protection_arr, land_arr) # The start_set indicates the pixel coordinates (int tuples) to continue progressive flooding.
     checkstack, bolean = getCoastlineContinuationSet(water_arr,dem_arr, bolean_min, start_set_min, protection_arr)
@@ -156,26 +128,11 @@ if __name__ == "__main__":
     # print(f'att array: {att_arr}')
     print(f'att integral min: {att_integral.min()}; att integral max: {att_integral.max()}')
 
-    # checkstack_x = []
-    # checkstack_y = []
-    # checkstack_z = []
+
     start_set_min_arr = np.zeros(dem_arr.shape,dtype=bool)
     for i,j in checkstack:
-    #     checkstack_x.append(X[i,j])
-    #     checkstack_y.append(Y[i,j])
-    #     checkstack_z.append(dem_arr[i,j])
         start_set_min_arr[i,j] = True
 
-    # axes[0].scatter(checkstack_x, checkstack_y, checkstack_z, color='red',alpha=0.5, label = 'to be checked for flooding')
-
-    axes[1].plot_surface(X,Y, -water_depth) # invert water depth to represent flooded waters visually
-    axes[1].set_title(f'Water depth\nSLR: {slr}, max: {water_depth.max():.2f}, min: {water_depth.min():.2f}')
-    axes[1].set_zlim(zlim[0],zlim[1])
-    # plot protection
-    axes[1].plot_surface(X,Y, protection_arr, cmap = cm.Reds)
-
-    plt.legend()
-    plt.show()
     ax_width = [1, 0.1, 1, 1, 1, 1, 0.1]
     fig, axes = plt.subplots(1,7, figsize=(15,5), gridspec_kw={'width_ratios': ax_width})
     # remove axis outline
@@ -203,22 +160,6 @@ if __name__ == "__main__":
     cbar = plt.colorbar(im, cax=axes[6])
     cbar.ax.set_ylabel('flood depth (m)')
 
-    fig.suptitle(f'lowest DEM: {dem_arr.min():.3f}, SLR: {slr:.3f}\natt_val: {args.att_val:.5f}, att_integral: {att_integral.max():.2f}\n max water depth: {water_depth.max():.3f}')
+    fig.suptitle(f'lowest DEM: {dem_arr.min():.3f}, SLR: {slr:.3f}\n max water depth: {water_depth.max():.3f}')
     plt.tight_layout()
     plt.show()
-
-    # plot flooded land area
-
-    # fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-    
-    # surf = ax.plot_surface(X,Y, -flooded_area, vmin = flooded_area.min(),alpha=0.5)
-    # # ax.plot_surface(X,Y, dem_arr, vmin = dem_arr.min())
-    # # ax.plot_surface(X,Y, water_depth,alpha=0.5)
-    # fig.colorbar(surf, shrink = 0.5, aspect=5)
-    # ax.set_title('Flooded area')
-    # plt.show()
-
-
-
-
-    

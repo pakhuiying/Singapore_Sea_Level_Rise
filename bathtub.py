@@ -232,8 +232,11 @@ def connectedAttenuatedBathtub(water_arr, dem_arr, protection_arr, att_arr, att_
 				continue
 			if j < 0 or j >= s:
 				continue
-
+			
+			
 			if att_integral[i,j] > att:
+				# print(f'IF ATT_INTEGRAL {att_integral[i,j]} > ATT {att}')
+
 				"""If the flood water exceeds the protection, and attentuated flood level exceeds the DEM, then propagate."""
 				if water_arr[i,j] > protection_arr[i,j] and water_arr[i,j] >= threshold + dem_arr[i,j] + att:
 					residual = {(i,j+1): att+ dem_res*att_arr[i,j],
