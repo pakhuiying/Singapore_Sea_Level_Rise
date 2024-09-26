@@ -10,7 +10,10 @@ folder: str. Folder name of one of the folders, Bac_lieu, Bay_are, Dutch_islands
 Upon execution, a water_depth_RP1000.tif will be generated in the respective folder in 10-12 minutes. 
 This .tif file (which can be opened in QGIS), will represent the water depth in meters.
 
-
+to run this script in the command line:
+	python run_sg_30m.py (this command runs the default arguments, where scenario is SSP1, att_val is 0.0002)
+	python run_sg_30m.py --scenario SSP2 (this command specifies the type of SSP scenario)
+	python run_sg_30m.py --slr (this command specifies the slr level, which will override the scenario argument, which allows for better customisation of SLR)
 """
 
 from bathtub import *
@@ -24,6 +27,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Generate SLR based on bathtub algorithm')
 parser.add_argument('--scenario',type=str, default='SSP1')
 parser.add_argument('--att_val',type=float, default=0.0002)
+parser.add_argument('--slr',type=float, required=False, default=None)
 args = parser.parse_args()
 
 #Set global attenuation factor (unitless)
@@ -108,6 +112,10 @@ elif args.scenario == "HILL_low":
 else:
 	slr = HILL_high
 
+if args.slr is not None:
+	# if slr is supplied, override the slr provided by scenarios
+	slr = args.slr
+
 water_arr = np.zeros(dem_arr.shape) + slr
 # current sea level
 local_minwater = minwater.matchRefMap(dem, 'cutoff')
@@ -147,7 +155,12 @@ floodmap[:] = water_depth*local_land_arr # creates a copy. Clips the land boolea
 # floodmap[np.where(noDataMask)] = 0 # assign -99 to noData mask
 floodmap.writeNodata(0)
 
-floodmap.writeRaster(filename = os.path.join(store_dir,f'water_depth_year{year}_{args.scenario}.tif'))
+fn = os.path.join(store_dir,f'water_depth_year{year}_{args.scenario}.tif')
+if args.slr is not None:
+	# if slr is supplied, override the slr provided by scenarios
+	fn = os.path.join(store_dir,f'water_depth_{int(slr)}.tif')
+
+floodmap.writeRaster(filename = fn)
 # floodmap.writeRaster(filename = fldr+'/water_depth_RP{}.tif'.format(RP))
 
 print('Raster prepared and stored in {:.1f} secs\nRasters stored in: {}'.format(time.time() - time_prop, store_dir))
